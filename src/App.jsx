@@ -408,16 +408,27 @@ export default function App() {
 
         {/* Tabela resumo */}
         <section className="print-area">
-          {/* Título impresso (aparece apenas no PDF/impressão) */}
-          <div className="print-only print-title">
-            <strong>CONTROLE DA QUALIDADE</strong>
-            <span>Análise de risco · Reunião de antecipação</span>
-          </div>
-
           {hasData ? (
             <div className="table-scroll" style={{ border: "1px solid #E5E9F0", borderRadius: 14, overflow: "auto", maxHeight: "74vh", background: "#fff", boxShadow: "0 1px 3px rgba(15,23,42,.05)" }}>
-              <table style={{ borderCollapse: "separate", borderSpacing: 0, width: "100%", fontSize: 12.5 }}>
+              <table style={{ borderCollapse: "separate", borderSpacing: 0, width: "100%", fontSize: 11 }}>
                 <thead>
+                  {/* Cabeçalho de impressão — repete em todas as páginas do PDF */}
+                  <tr className="print-row">
+                    <th className="print-title-cell" colSpan={allCols.length}>
+                      <div className="pt-title">
+                        <strong>CONTROLE DA QUALIDADE</strong>
+                        <span>Análise de risco · Reunião de antecipação</span>
+                      </div>
+                    </th>
+                  </tr>
+                  <tr className="print-row">
+                    <th className="print-sum-cell" colSpan={allCols.length}>
+                      <span><b>{rows.length}</b> Itens</span>
+                      <span><b>{rows.filter((r) => r._matched).length}</b> Correlacionados</span>
+                      <span className="ps-risk"><b>{flaggedCount}</b> Em risco</span>
+                      <span className="ps-note">Linhas em vermelho · indisponível ou em branco</span>
+                    </th>
+                  </tr>
                   <tr className="group-row">
                     <th className="group-cell grp-prod" colSpan={PROD_COLS.length}>
                       Sequência de Produção
@@ -455,8 +466,7 @@ export default function App() {
                               borderLeft: i === PROD_COLS.length ? "2px solid #CBD5E1" : undefined,
                               fontWeight: cellBad ? 700 : 400,
                               color: cellBad ? "#B91C1C" : "#1E293B",
-                              whiteSpace: c.key === "descricao" ? "normal" : "nowrap",
-                              minWidth: c.key === "descricao" ? 220 : undefined,
+                              whiteSpace: "nowrap",
                             }}
                           >
                             {trim(v) || (instr && r._flagged ? "Indisponível" : "—")}
@@ -531,56 +541,76 @@ body { margin: 0; }
 
 .group-cell {
   position: sticky; top: 0; z-index: 6;
-  height: 34px; padding: 0 12px;
-  font-family: 'Sora', sans-serif; font-weight: 700; font-size: 12px;
-  letter-spacing: .04em; text-transform: uppercase; text-align: left;
+  height: 30px; padding: 0 11px;
+  font-family: 'Sora', sans-serif; font-weight: 700; font-size: 10.5px;
+  letter-spacing: .05em; text-transform: uppercase; text-align: left;
   color: #fff;
 }
 .grp-prod { background: #1E3A8A; }
 .grp-inst { background: #475569; border-left: 2px solid #fff; }
 
 .head-cell {
-  position: sticky; top: 34px; z-index: 5;
-  background: #EEF2F8; color: #334155;
-  font-weight: 700; font-size: 11.5px; text-align: left;
-  padding: 10px 12px; white-space: nowrap;
-  border-bottom: 1px solid #D8DEE9;
+  position: sticky; top: 30px; z-index: 5;
+  background: #EEF2F8; color: #3B4658;
+  font-weight: 700; font-size: 9.5px; letter-spacing: .02em;
+  text-transform: uppercase; text-align: left;
+  padding: 7px 11px; white-space: nowrap;
+  border-bottom: 1px solid #DCE3EC;
 }
 
 .cell {
-  padding: 8px 12px; border-bottom: 1px solid #EEF1F6;
-  vertical-align: top;
+  padding: 6px 11px; border-bottom: 1px solid #EEF1F6;
+  vertical-align: middle; font-size: 11px;
 }
 tbody tr.row-alt { background: #FAFBFD; }
-tbody tr:hover { background: #F0F5FF; }
-tbody tr.row-bad { background: #FDE3E3 !important; }
+tbody tr:hover { background: #EFF4FF; }
+tbody tr.row-bad { background: #FDE6E6 !important; }
 tbody tr.row-bad:hover { background: #FBD5D5 !important; }
 
+/* Linhas exclusivas do PDF (ficam no <thead>, repetem em todas as páginas) */
+.print-row { display: none; }
 .print-only { display: none; }
 
 @media print {
-  @page { size: A4 landscape; margin: 8mm; }
+  @page { size: A4 landscape; margin: 7mm; }
   html, body { background: #fff !important; }
   .no-print { display: none !important; }
   .print-only { display: block; }
-  .print-title {
-    margin: 0 0 8px; padding-bottom: 6px; border-bottom: 2px solid #1E3A8A;
-    font-family: 'Sora', sans-serif; color: #1E3A8A;
-  }
-  .print-title strong { display: block; font-size: 15px; letter-spacing: .03em; }
-  .print-title span { font-size: 11px; color: #475569; }
+  .print-row { display: table-row; }
 
   .print-area { margin: 0 !important; }
   .table-scroll {
     max-height: none !important; overflow: visible !important;
     border: none !important; border-radius: 0 !important; box-shadow: none !important;
   }
-  table { font-size: 8px !important; width: 100% !important; }
+  table { font-size: 7.5px !important; width: 100% !important; }
   thead { display: table-header-group; }
   tr { page-break-inside: avoid; }
-  .group-cell { position: static; height: auto; padding: 3px 5px; font-size: 8px; }
-  .head-cell { position: static; padding: 4px 5px; font-size: 8px; background: #EEF2F8 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .cell { padding: 3px 5px; }
+
+  /* Título — repetido no topo de todas as páginas */
+  .print-title-cell {
+    padding: 0 0 4px; border-bottom: 2px solid #1E3A8A; text-align: left;
+    background: #fff !important;
+  }
+  .pt-title strong { font-family: 'Sora', sans-serif; display: block; font-size: 13px; letter-spacing: .03em; color: #1E3A8A; }
+  .pt-title span { font-size: 9px; color: #475569; }
+
+  /* Resumo de quantidades — topo de cada página */
+  .print-sum-cell {
+    padding: 5px 0 7px; text-align: left; background: #fff !important;
+    font-weight: 500; color: #334155; font-size: 8.5px;
+  }
+  .print-sum-cell span { margin-right: 16px; }
+  .print-sum-cell b { font-family: 'Sora', sans-serif; font-size: 10px; color: #1E3A8A; margin-right: 3px; }
+  .print-sum-cell .ps-risk b { color: #C0392B; }
+  .print-sum-cell .ps-note { color: #94A3B8; font-style: italic; }
+
+  .group-cell { position: static; height: auto; padding: 3px 5px; font-size: 7.5px;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .head-cell { position: static; padding: 3px 5px; font-size: 7.5px; letter-spacing: 0;
+    background: #EEF2F8 !important; color: #334155 !important;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .cell { padding: 2.5px 5px; font-size: 7.5px; }
   tbody tr.row-bad, .grp-prod, .grp-inst, tbody tr.row-alt {
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
