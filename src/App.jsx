@@ -149,13 +149,17 @@ const isBad = (v) => {
 
 function UploadZone({ title, subtitle, file, accentColor, status, onFile }) {
   const [drag, setDrag] = useState(false);
+  const [hover, setHover] = useState(false);
   const inputId = useMemo(() => "f_" + Math.random().toString(36).slice(2), []);
 
   const handle = (f) => f && onFile(f);
+  const active = drag || hover; // borda azul / realce ao passar o mouse ou arrastar
 
   return (
     <label
       htmlFor={inputId}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       onDragOver={(e) => {
         e.preventDefault();
         setDrag(true);
@@ -173,12 +177,14 @@ function UploadZone({ title, subtitle, file, accentColor, status, onFile }) {
         flex: 1,
         minWidth: 260,
         cursor: "pointer",
-        background: "#fff",
-        border: `1.5px dashed ${drag ? accentColor : "#CBD5E1"}`,
+        background: active ? "rgba(37,99,235,0.04)" : "#fff",
+        border: `1.5px dashed ${active ? "#2563EB" : "#CBD5E1"}`,
         borderRadius: 14,
         padding: "20px 22px",
-        transition: "all .15s ease",
-        boxShadow: drag ? `0 0 0 4px ${accentColor}22` : "0 1px 2px rgba(15,23,42,.04)",
+        transition: "all .18s ease",
+        boxShadow: active
+          ? "0 6px 20px rgba(37,99,235,0.16), 0 0 0 3px rgba(37,99,235,0.10)"
+          : "0 1px 2px rgba(15,23,42,.04)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -206,9 +212,9 @@ function UploadZone({ title, subtitle, file, accentColor, status, onFile }) {
         </div>
       </div>
 
-      <div style={{ fontSize: 12.5, color: file ? "#0F766E" : "#94A3B8", marginTop: 2 }}>
+      <div style={{ fontSize: 12.5, color: file ? "#2563EB" : "#94A3B8", marginTop: 2 }}>
         {file ? (
-          <span style={{ color: accentColor, fontWeight: 600 }}>✓ {file}{status ? ` — ${status}` : ""}</span>
+          <span style={{ color: "#2563EB", fontWeight: 600 }}>✓ {file}{status ? ` — ${status}` : ""}</span>
         ) : (
           "Arraste o arquivo aqui ou clique para selecionar (.xlsx, .xls, .csv)"
         )}
@@ -410,7 +416,7 @@ export default function App() {
         <section className="print-area">
           {hasData ? (
             <div className="table-scroll" style={{ border: "1px solid #E5E9F0", borderRadius: 14, overflow: "auto", maxHeight: "74vh", background: "#fff", boxShadow: "0 1px 3px rgba(15,23,42,.05)" }}>
-              <table style={{ borderCollapse: "separate", borderSpacing: 0, width: "100%", fontSize: 11 }}>
+              <table style={{ borderCollapse: "separate", borderSpacing: 0, width: "100%", fontSize: 10 }}>
                 <thead>
                   {/* Cabeçalho de impressão — repete em todas as páginas do PDF */}
                   <tr className="print-row">
@@ -559,8 +565,8 @@ body { margin: 0; }
 }
 
 .cell {
-  padding: 6px 11px; border-bottom: 1px solid #EEF1F6;
-  vertical-align: middle; font-size: 11px;
+  padding: 5px 11px; border-bottom: 1px solid #EEF1F6;
+  vertical-align: middle; font-size: 9.5px;
 }
 tbody tr.row-alt { background: #FAFBFD; }
 tbody tr:hover { background: #EFF4FF; }
