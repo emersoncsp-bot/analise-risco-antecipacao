@@ -687,5 +687,5 @@ tbody tr.row-bad:hover { background: #FBD5D5 !important; }
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
 }
-`;
+
 
