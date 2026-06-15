@@ -15,6 +15,44 @@ const norm = (s) =>
 
 const trim = (v) => String(v ?? "").trim();
 
+// Converte um valor (Date, número serial Excel ou texto pt-BR) em Date, ou null
+function parseBrDate(s) {
+  const m = String(s).trim().match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?(?:[ T](\d{1,2}):(\d{2}))?/);
+  if (!m) return null;
+  let dd = +m[1], mm = +m[2];
+  let yy = m[3] ? +m[3] : new Date().getFullYear();
+  if (yy < 100) yy += 2000;
+  const hh = m[4] != null ? +m[4] : 0;
+  const mi = m[5] != null ? +m[5] : 0;
+  const d = new Date(yy, mm - 1, dd, hh, mi);
+  return isNaN(d.getTime()) ? null : d;
+}
+function toDate(v) {
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  if (typeof v === "number" && isFinite(v)) {
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof v === "string" && v.trim()) return parseBrDate(v);
+  return null;
+}
+const pad = (n) => String(n).padStart(2, "0");
+// Formata para exibição: dd/mm/aaaa (com hora se houver)
+function fmtDate(v) {
+  const d = toDate(v);
+  if (!d) return trim(v);
+  const base = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+  return d.getHours() || d.getMinutes() ? `${base} ${pad(d.getHours())}:${pad(d.getMinutes())}` : base;
+}
+// Valor numérico só da data (aaaammdd) para comparação a nível de dia
+const dayNum = (d) => (d ? d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate() : null);
+// Exibição genérica de uma célula
+function disp(v) {
+  if (v == null) return "";
+  if (v instanceof Date) return fmtDate(v);
+  return String(v).trim();
+}
+
 // Procura o índice de uma coluna dado um conjunto de candidatos (ordem = prioridade)
 function findCol(headers, candidates) {
   const nh = headers.map(norm);
@@ -33,11 +71,12 @@ function findCol(headers, candidates) {
   return -1;
 }
 
-// Lê o primeiro sheet como matriz de linhas (array de arrays)
+// Lê o primeiro sheet como matriz de linhas (array de arrays).
+// raw:true + cellDates:true => células de data chegam como objetos Date.
 function readSheetMatrix(arrayBuffer) {
   const wb = XLSX.read(arrayBuffer, { type: "array", cellDates: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false, blankrows: false });
+  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true, blankrows: false });
 }
 
 // Detecta a linha de cabeçalho (a que melhor casa com os candidatos esperados)
@@ -66,20 +105,24 @@ function detectHeaderRow(rows, candidateSets) {
 const PROD_COLS = [
   { key: "pedido", label: "Pedido/item", cands: ["pedidoitem", "pedido"] },
   { key: "ordem", label: "Ordem", cands: ["ordem"] },
-  { key: "halb", label: "Halb", cands: ["halb"] },
-  { key: "inicio", label: "Início (Enfornam.)", cands: ["inicioenfornam", "inicioenforn", "enfornamento", "enfornam", "inicio"] },
+  { key: "halb", label: "HALB Gerado", cands: ["halbgerado", "halb"] },
+  { key: "inicio", label: "Início (Enfornam.)", cands: ["inicioenfornam", "inicioenforn", "enfornamento", "enfornam", "inicio"], date: true },
   { key: "cliente", label: "Cliente externo", cands: ["clienteexterno", "cliente"] },
   { key: "emi", label: "Teste EMI", cands: ["testeemi", "emi"] },
   { key: "descricao", label: "Descrição produto", cands: ["descricaoproduto", "descricaodoproduto", "descricao", "produto"] },
 ];
 
+// kind: "instr" entra na verificação de indisponível/branco (linha vermelha);
+//       "date" é validade, comparada com Início (Enfornam.) -> destaque âmbar.
 const AVAIL_COLS = [
-  { key: "tuboUt", label: "Tubo Padrão UT", cands: ["tubopadraout", "tubopadraoultrassom", "tubout"] },
-  { key: "tuboEmi", label: "Tubo Padrão EMI", cands: ["tubopadraoemi", "tuboemi"] },
-  { key: "drift", label: "Drift", cands: ["drift"] },
-  { key: "sapataUt", label: "Sapata UT", cands: ["sapataut", "sapata"] },
-  { key: "abendi", label: "Qualificação ABENDI (para NDT)", cands: ["qualificacaoabendiparandt", "qualificacaoabendi", "abendi"] },
+  { key: "tuboUt", label: "Tubo Padrão UT", cands: ["tubopadraout", "tubopadraoultrassom", "tubout"], kind: "instr" },
+  { key: "validadeUt", label: "Validade UT", cands: ["validadeut", "validadeultrassom", "validadedout"], kind: "date" },
+  { key: "tuboEmi", label: "Tubo Padrão EMI", cands: ["tubopadraoemi", "tuboemi"], kind: "instr" },
+  { key: "validadeEmi", label: "Validade EMI", cands: ["validadeemi", "validadedoemi"], kind: "date" },
+  { key: "drift", label: "Drift", cands: ["drift"], kind: "instr" },
 ];
+
+const INSTR_COLS = AVAIL_COLS.filter((c) => c.kind === "instr");
 
 const AVAIL_KEY_CANDS = ["halbq", "halb"];
 
@@ -100,9 +143,10 @@ function parseProduction(arrayBuffer) {
     const obj = {};
     let hasContent = false;
     PROD_COLS.forEach((c) => {
-      const v = colIdx[c.key] >= 0 ? trim(row[colIdx[c.key]]) : "";
-      obj[c.key] = v;
-      if (v) hasContent = true;
+      const raw = colIdx[c.key] >= 0 ? row[colIdx[c.key]] : "";
+      obj[c.key] = disp(raw);
+      if (obj[c.key]) hasContent = true;
+      if (c.date) obj._inicioDate = toDate(raw);
     });
     if (hasContent) items.push(obj);
   }
@@ -126,7 +170,9 @@ function parseAvailability(arrayBuffer) {
     const key = norm(keyRaw);
     const obj = {};
     AVAIL_COLS.forEach((c) => {
-      obj[c.key] = colIdx[c.key] >= 0 ? trim(row[colIdx[c.key]]) : "";
+      const raw = colIdx[c.key] >= 0 ? row[colIdx[c.key]] : "";
+      obj[c.key] = disp(raw);
+      if (c.kind === "date") obj[c.key + "Date"] = toDate(raw);
     });
     if (!map.has(key)) map.set(key, obj);
   }
@@ -268,13 +314,23 @@ export default function App() {
     return prod.items.map((it) => {
       const match = avail ? avail.map.get(norm(it.halb)) : null;
       const a = {};
-      AVAIL_COLS.forEach((c) => (a[c.key] = match ? match[c.key] : ""));
-      // Linha vermelha apenas após importar disponibilidade
+      AVAIL_COLS.forEach((c) => {
+        a[c.key] = match ? match[c.key] : "";
+        if (c.kind === "date") a[c.key + "Date"] = match ? match[c.key + "Date"] : null;
+      });
+      // Linha vermelha (indisponível/branco) considera apenas os instrumentos
       let flagged = false;
-      if (avail) {
-        flagged = AVAIL_COLS.some((c) => isBad(a[c.key]));
-      }
-      return { ...it, ...a, _flagged: flagged, _matched: !!match };
+      if (avail) flagged = INSTR_COLS.some((c) => isBad(a[c.key]));
+
+      // Destaque de validade vencida: validade < Início (Enfornam.), por dia
+      const ini = dayNum(it._inicioDate);
+      const expired = {};
+      AVAIL_COLS.filter((c) => c.kind === "date").forEach((c) => {
+        const vd = dayNum(a[c.key + "Date"]);
+        expired[c.key] = ini != null && vd != null && vd < ini;
+      });
+
+      return { ...it, ...a, _flagged: flagged, _matched: !!match, _expired: expired };
     });
   }, [prod, avail]);
 
@@ -346,7 +402,7 @@ export default function App() {
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
             <UploadZone
               title="Sequência de Produção"
-              subtitle="Pedido, Ordem, Halb, Enfornamento…"
+              subtitle="Pedido, Ordem, HALB Gerado, Enfornamento…"
               accentColor="#2563EB"
               file={prod?.fileName}
               status={prod ? `${prod.items.length} item(ns)` : ""}
@@ -405,9 +461,15 @@ export default function App() {
             <Stat label="Itens" value={rows.length} color="#2563EB" />
             <Stat label="Correlacionados" value={rows.filter((r) => r._matched).length} color="#0F766E" />
             <Stat label="Em risco" value={flaggedCount} color="#DC2626" />
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", fontSize: 12.5, color: "#64748B" }}>
-              <span style={{ width: 14, height: 14, borderRadius: 4, background: "#FDE3E3", border: "1px solid #F4B4B4" }} />
-              Indisponível ou em branco
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginLeft: "auto", fontSize: 12.5, color: "#64748B", flexWrap: "wrap" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <span style={{ width: 14, height: 14, borderRadius: 4, background: "#FDE3E3", border: "1px solid #F4B4B4" }} />
+                Indisponível ou em branco
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <span style={{ width: 14, height: 14, borderRadius: 4, background: "#FFE6CC", border: "1px solid #F0B27A" }} />
+                Validade anterior ao enfornamento
+              </span>
             </div>
           </div>
         )}
@@ -432,7 +494,7 @@ export default function App() {
                       <span><b>{rows.length}</b> Itens</span>
                       <span><b>{rows.filter((r) => r._matched).length}</b> Correlacionados</span>
                       <span className="ps-risk"><b>{flaggedCount}</b> Em risco</span>
-                      <span className="ps-note">Linhas em vermelho · indisponível ou em branco</span>
+                      <span className="ps-note">Vermelho · indisponível/branco &nbsp;|&nbsp; Laranja · validade anterior ao enfornamento</span>
                     </th>
                   </tr>
                   <tr className="group-row">
@@ -462,20 +524,23 @@ export default function App() {
                     <tr key={ri} className={r._flagged ? "row-bad" : ri % 2 ? "row-alt" : ""}>
                       {allCols.map((c, i) => {
                         const v = r[c.key];
-                        const instr = i >= PROD_COLS.length;
-                        const cellBad = r._flagged && instr && isBad(v);
+                        const isInstr = c.kind === "instr";
+                        const isDate = c.kind === "date";
+                        const cellBad = r._flagged && isInstr && isBad(v);
+                        const expired = isDate && r._expired && r._expired[c.key];
                         return (
                           <td
                             key={c.key}
-                            className="cell"
+                            className={"cell" + (expired ? " cell-exp" : "")}
                             style={{
                               borderLeft: i === PROD_COLS.length ? "2px solid #CBD5E1" : undefined,
-                              fontWeight: cellBad ? 700 : 400,
-                              color: cellBad ? "#B91C1C" : "#1E293B",
+                              fontWeight: cellBad || expired ? 700 : 400,
+                              color: expired ? "#C2410C" : cellBad ? "#B91C1C" : "#1E293B",
+                              background: expired ? "#FFE6CC" : undefined,
                               whiteSpace: "nowrap",
                             }}
                           >
-                            {trim(v) || (instr && r._flagged ? "Indisponível" : "—")}
+                            {trim(v) || (isInstr && r._flagged ? "Indisponível" : "—")}
                           </td>
                         );
                       })}
@@ -616,9 +681,11 @@ tbody tr.row-bad:hover { background: #FBD5D5 !important; }
   .head-cell { position: static; padding: 3px 5px; font-size: 7.5px; letter-spacing: 0;
     background: #EEF2F8 !important; color: #334155 !important;
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .cell { padding: 2.5px 5px; font-size: 7.5px; }
+  .cell { padding: 2.5px 5px; font-size: 7.5px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  td.cell-exp { background: #FFE6CC !important; color: #C2410C !important; font-weight: 700; }
   tbody tr.row-bad, .grp-prod, .grp-inst, tbody tr.row-alt {
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
 }
 `;
+
